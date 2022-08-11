@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Provisioning a platform stack
+
+# t1.raisethebarawards.in
+Parameters:
+  WebsiteDNS:
+    Type: String
+    Description: Website having a DNS with WWW
+    AllowedPattern: ".+"
+    ConstraintDescription: This field cannot be empty
+  
+  ExternalDomainDNS:
+    Type: String
+    Description: Website having a DNS with WWW
+    AllowedPattern: ".+"
+    ConstraintDescription: This field cannot be empty
+
+  HostedZoneId:
+    Type: String
+    Description: Website DNS Hosted Zone Id
+    AllowedPattern: ".+"
+    ConstraintDescription: This field cannot be empty
+
+Resources:
+  WebsiteSSLCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties: 
+      DomainName: !Ref ExternalDomainDNS
+      DomainValidationOptions: 
+        - DomainName: !Ref ExternalDomainDNS
+          HostedZoneId: !Ref HostedZoneId
+      SubjectAlternativeNames: 
+        - !Ref ExternalDomainDNS
+      ValidationMethod: DNS
+
+  CloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: Unique Domain Hosting Environment
+
+  WebsiteCloudfront:
+    Type: AWS::CloudFront::Distribution
+    DependsOn: 
+      - CloudFrontOriginAccessIdentity
+      - WebsiteSSLCertificate
+    Properties:
+      DistributionConfig:
+        PriceClass: PriceClass_All
+        Aliases:
+          - !Sub ${ExternalDomainDNS}
+        Origins:
+          - DomainName: !Sub ${WebsiteDNS}.s3.${AWS::Region}.amazonaws.com
+            Id: !Sub ${WebsiteDNS}.s3.${AWS::Region}.amazonaws.com
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}
+        Enabled: True
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 404
+            ResponsePagePath: '/index.html'
+        DefaultCacheBehavior: 
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          Compress: True
+          # ForwardedValues:
+            # QueryString: True
+          DefaultTTL: 3600 # in seconds
+          ViewerProtocolPolicy: redirect-to-https
+          TargetOriginId: !Sub ${WebsiteDNS}.s3.${AWS::Region}.amazonaws.com
+        ViewerCertificate: 
+          # AcmCertificateArn: !Sub arn:aws:acm:${AWS::Region}:${AWS::AccountId}:certificate/${WebsiteSSLCertificate}
+          AcmCertificateArn: !Ref WebsiteSSLCertificate
+          MinimumProtocolVersion: TLSv1.2_2021 
+          SslSupportMethod: sni-only
+        HttpVersion: http2
+        IPV6Enabled: true
+        DefaultRootObject: index.html
+
+  Route53RecordSet:
+    Type: AWS::Route53::RecordSet
+    DependsOn:
+      - WebsiteCloudfront
+    Properties:
+      Name: !Sub ${ExternalDomainDNS}
+      HostedZoneId: !Sub ${HostedZoneId}
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt WebsiteCloudfront.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+Outputs:
+  SSLCertificate: 
+    Value: !Ref WebsiteSSLCertificate
