@@ -2,9 +2,15 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: Provisioning a platform stack
 
 Parameters:
-  WebsiteDNS:
+  WebsiteDNSWWW:
     Type: String
     Description: Website having a DNS with WWW
+    AllowedPattern: ".+"
+    ConstraintDescription: This field cannot be empty
+
+  WebsiteDNSWithoutWWW:
+    Type: String
+    Description: Website having a DNS without WWW
     AllowedPattern: ".+"
     ConstraintDescription: This field cannot be empty
 
@@ -19,16 +25,28 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       AccessControl: PublicRead
-      BucketName: !Sub "www.${WebsiteDNS}"
+      BucketName: !Ref WebsiteDNSWWW
       WebsiteConfiguration:
         IndexDocument: index.html
         ErrorDocument: 404.html
       Tags:
         - Key: Website
-          Value: !Ref WebsiteDNS
+          Value: !Ref WebsiteDNSWWW
+
+  S3BucketWithoutWWW:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      BucketName: !Ref WebsiteDNSWithoutWWW
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: 404.html
+      Tags:
+        - Key: Website
+          Value: !Ref WebsiteDNSWithoutWWW
 
   S3BucketWithWWWBucketPolicy:
-    DependsOn: 
+    DependsOn:
       - S3BucketWithWWW
     Type: 'AWS::S3::BucketPolicy'
     Properties:
@@ -40,52 +58,89 @@ Resources:
             Effect: Allow
             Principal: '*'
             Action: 's3:GetObject'
-            Resource: !Join 
+            Resource: !Join
               - ''
               - - 'arn:aws:s3:::'
                 - !Ref S3BucketWithWWW
                 - /*
       Bucket: !Ref S3BucketWithWWW
 
-  WebsiteSSLCertificate:
+  S3BucketWithoutWWWBucketPolicy:
+    DependsOn:
+      - S3BucketWithoutWWW
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      PolicyDocument:
+        Id: WebsiteDNSPolicy
+        Version: 2012-10-17
+        Statement:
+          - Sid: PublicReadForGetBucketObjects
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref WebsiteDNSWithoutWWW
+                - /*
+      Bucket: !Ref WebsiteDNSWithoutWWW
+
+  WebsiteSSLCertificateWWW:
     Type: AWS::CertificateManager::Certificate
-    Properties: 
-      DomainName: !Ref WebsiteDNS
-      DomainValidationOptions: 
-        - DomainName: !Ref WebsiteDNS
+    Properties:
+      DomainName: !Ref WebsiteDNSWWW
+      DomainValidationOptions:
+        - DomainName: !Ref WebsiteDNSWWW
           HostedZoneId: !Ref HostedZoneId
-      SubjectAlternativeNames: 
-        - !Sub "*.${WebsiteDNS}"
+      SubjectAlternativeNames:
+        - !Sub "*.${WebsiteDNSWWW}"
       ValidationMethod: DNS
 
-  CloudFrontOriginAccessIdentity:
+  WebsiteSSLCertificateWithoutWWW:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref WebsiteDNSWWW
+      DomainValidationOptions:
+        - DomainName: !Ref WebsiteDNSWWW
+          HostedZoneId: !Ref HostedZoneId
+      SubjectAlternativeNames:
+        - !Sub "*.${WebsiteDNSWWW}"
+      ValidationMethod: DNS
+
+  CloudFrontOriginAccessIdentityWWW:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
     Properties:
       CloudFrontOriginAccessIdentityConfig:
-        Comment: Unique Domain Hosting Environment
+        Comment: CloudfrontIdentityWWW
 
-  WebsiteCloudfront:
+  CloudFrontOriginAccessIdentityWithoutWWW:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: CloudfrontIdentityWithoutWWW
+
+  WebsiteCloudfrontWWW:
     Type: AWS::CloudFront::Distribution
-    DependsOn: 
+    DependsOn:
       - S3BucketWithWWW
-      - CloudFrontOriginAccessIdentity
-      - WebsiteSSLCertificate
+      - CloudFrontOriginAccessIdentityWWW
+      - WebsiteSSLCertificateWWW
     Properties:
       DistributionConfig:
         PriceClass: PriceClass_All
         Aliases:
-          - !Sub ${WebsiteDNS}
+          - !Sub ${WebsiteDNSWWW}
         Origins:
           - DomainName: !Sub ${S3BucketWithWWW}.s3.${AWS::Region}.amazonaws.com
             Id: !Sub ${S3BucketWithWWW}.s3.${AWS::Region}.amazonaws.com
             S3OriginConfig:
-              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}
+              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentityWWW}
         Enabled: True
         CustomErrorResponses:
           - ErrorCode: 404
             ResponseCode: 404
             ResponsePagePath: '/index.html'
-        DefaultCacheBehavior: 
+        DefaultCacheBehavior:
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 #Caching Policy Managed By AWS
           AllowedMethods:
             - GET
@@ -101,36 +156,92 @@ Resources:
           DefaultTTL: 3600 # in seconds
           ViewerProtocolPolicy: redirect-to-https
           TargetOriginId: !Sub ${S3BucketWithWWW}.s3.${AWS::Region}.amazonaws.com
-        ViewerCertificate: 
-          # AcmCertificateArn: !Sub arn:aws:acm:${AWS::Region}:${AWS::AccountId}:certificate/${WebsiteSSLCertificate}
-          AcmCertificateArn: !Ref WebsiteSSLCertificate
-          MinimumProtocolVersion: TLSv1.2_2021 
+        ViewerCertificate:
+          AcmCertificateArn: !Ref WebsiteSSLCertificateWWW
+          MinimumProtocolVersion: TLSv1.2_2021
           SslSupportMethod: sni-only
         HttpVersion: http2
         IPV6Enabled: true
         DefaultRootObject: index.html
 
-  Route53RecordSet:
+  WebsiteCloudfrontWithoutWWW:
+    Type: AWS::CloudFront::Distribution
+    DependsOn:
+      - S3BucketWithoutWWW
+      - CloudFrontOriginAccessIdentityWithoutWWW
+      - WebsiteSSLCertificateWithoutWWW
+    Properties:
+      DistributionConfig:
+        PriceClass: PriceClass_All
+        Aliases:
+          - !Sub ${S3BucketWithoutWWW}
+        Origins:
+          - DomainName: !Sub ${S3BucketWithoutWWW}.s3.${AWS::Region}.amazonaws.com
+            Id: !Sub ${S3BucketWithoutWWW}.s3.${AWS::Region}.amazonaws.com
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentityWithoutWWW}
+        Enabled: True
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 404
+            ResponsePagePath: '/index.html'
+        DefaultCacheBehavior:
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 #Caching Policy Managed By AWS
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          Compress: True
+          # ForwardedValues:
+            # QueryString: True
+          DefaultTTL: 3600 # in seconds
+          ViewerProtocolPolicy: redirect-to-https
+          TargetOriginId: !Sub ${S3BucketWithoutWWW}.s3.${AWS::Region}.amazonaws.com
+        ViewerCertificate:
+          AcmCertificateArn: !Ref WebsiteSSLCertificateWithoutWWW
+          MinimumProtocolVersion: TLSv1.2_2021
+          SslSupportMethod: sni-only
+        HttpVersion: http2
+        IPV6Enabled: true
+        DefaultRootObject: index.html
+
+  Route53WWWRecordSet:
     Type: AWS::Route53::RecordSet
     DependsOn:
-      - WebsiteCloudfront
+      - WebsiteCloudfrontWWW
     Properties:
-      Name: !Sub ${WebsiteDNS}
+      Name: !Sub ${WebsiteDNSWWW}
       HostedZoneId: !Sub ${HostedZoneId}
       Type: A
       AliasTarget:
-        DNSName: !GetAtt WebsiteCloudfront.DomainName
+        DNSName: !GetAtt WebsiteCloudfrontWWW.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+  Route53WithoutWWWRecordSet:
+    Type: AWS::Route53::RecordSet
+    DependsOn:
+      - WebsiteCloudfrontWithoutWWW
+    Properties:
+      Name: !Sub ${WebsiteDNSWithoutWWW}
+      HostedZoneId: !Sub ${HostedZoneId}
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt WebsiteCloudfrontWWW.DomainName
         HostedZoneId: Z2FDTNDATAQYW2
 
 Outputs:
   S3BucketWithWWW:
     Value: !Sub ${S3BucketWithWWW}
   WebsiteUrlWWW:
-    Value: !GetAtt 
+    Value: !GetAtt
           - S3BucketWithWWW
           - WebsiteURL
-  SSLCertificate: 
-    Value: !Ref WebsiteSSLCertificate
+  SSLCertificate:
+    Value: !Ref WebsiteSSLCertificateWWW
   S3Bucket:
     Description: Bucket Created using this template.
     Value: !Ref S3BucketWithWWW
