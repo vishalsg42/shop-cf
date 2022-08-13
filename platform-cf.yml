@@ -99,12 +99,12 @@ Resources:
   WebsiteSSLCertificateWithoutWWW:
     Type: AWS::CertificateManager::Certificate
     Properties:
-      DomainName: !Ref WebsiteDNSWWW
+      DomainName: !Ref WebsiteDNSWithoutWWW
       DomainValidationOptions:
-        - DomainName: !Ref WebsiteDNSWWW
+        - DomainName: !Ref WebsiteDNSWithoutWWW
           HostedZoneId: !Ref HostedZoneId
       SubjectAlternativeNames:
-        - !Sub "*.${WebsiteDNSWWW}"
+        - !Sub "*.${WebsiteDNSWithoutWWW}"
       ValidationMethod: DNS
 
   CloudFrontOriginAccessIdentityWWW:
@@ -127,6 +127,7 @@ Resources:
       - WebsiteSSLCertificateWWW
     Properties:
       DistributionConfig:
+        Comment: !Sub  Distribution for ${S3BucketWithWWW}
         PriceClass: PriceClass_All
         Aliases:
           - !Sub ${WebsiteDNSWWW}
@@ -172,9 +173,10 @@ Resources:
       - WebsiteSSLCertificateWithoutWWW
     Properties:
       DistributionConfig:
+        Comment: !Sub  Distribution for ${S3BucketWithoutWWW}
         PriceClass: PriceClass_All
         Aliases:
-          - !Sub ${S3BucketWithoutWWW}
+          - !Sub ${WebsiteDNSWithoutWWW}
         Origins:
           - DomainName: !Sub ${S3BucketWithoutWWW}.s3.${AWS::Region}.amazonaws.com
             Id: !Sub ${S3BucketWithoutWWW}.s3.${AWS::Region}.amazonaws.com
