@@ -4,13 +4,13 @@ Description: Provisioning a platform stack
 Parameters:
   WebsiteDNSWWW:
     Type: String
-    Description: Website having a DNS with WWW
+    Description: Enter your domain name (with www)
     AllowedPattern: ".+"
     ConstraintDescription: This field cannot be empty
 
   WebsiteDNSWithoutWWW:
     Type: String
-    Description: Website having a DNS without WWW
+    Description: Enter your domain name (without www)
     AllowedPattern: ".+"
     ConstraintDescription: This field cannot be empty
 
