@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Provisioning a platform stack
+Description: Provisioning a external shop stack
 
 # t1.raisethebarawards.in
 Parameters:

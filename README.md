@@ -5,8 +5,6 @@
 
 
 ### To deploy the platform stack
-  >$ aws cloudformation deploy --template platform-cf.yml --stack-name &lt;stack-name&gt; --region &lt;region&gt; --parameter-overrides  WebsiteDNSWWW=&lt;website-url&gt; HostedZoneId=&lt;hostedzone-id&gt;  --profile &lt;profile-name&gt;
-
   >$ aws cloudformation deploy --template platform-cf.yml --stack-name &lt;stack-name&gt; --region &lt;region&gt;--parameter-overrides  WebsiteDNSWWW=&lt;website-url-with-www&gt; WebsiteDNSWithoutWWW=&lt;website-url-with-www&gt; HostedZoneId=&lt;hostedzone-id&gt; --profile beslin
 
   For Example:
