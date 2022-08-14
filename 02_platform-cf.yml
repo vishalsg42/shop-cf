@@ -20,71 +20,37 @@ Parameters:
     AllowedPattern: ".+"
     ConstraintDescription: This field cannot be empty
 
+  SecondaryRegion:
+    Type: String
+    Default: "ap-east-1"
+    AllowedValues:
+      - "us-east-2"
+      - "us-east-1"
+      - "us-west-1"
+      - "us-west-2"
+      - "af-south-1"
+      - "ap-east-1"
+      - "ap-southeast-3"
+      - "ap-south-1"
+      - "ap-northeast-3"
+      - "ap-northeast-2"
+      - "ap-southeast-1"
+      - "ap-southeast-2"
+      - "ap-northeast-1"
+      - "ca-central-1"
+      - "eu-central-1"
+      - "eu-west-1"
+      - "eu-west-2"
+      - "eu-south-1"
+      - "eu-west-3"
+      - "eu-north-1"
+      - "me-south-1"
+      - "sa-east-1"
+
+    Description: Enter your secondary region for S3 Bucket
+    ConstraintDescription: This field cannot be empty
+
 Resources:
-  S3BucketWithWWW:
-    Type: AWS::S3::Bucket
-    Properties:
-      AccessControl: PublicRead
-      BucketName: !Ref WebsiteDNSWWW
-      WebsiteConfiguration:
-        IndexDocument: index.html
-        ErrorDocument: 404.html
-      Tags:
-        - Key: Website
-          Value: !Ref WebsiteDNSWWW
-
-  S3BucketWithoutWWW:
-    Type: AWS::S3::Bucket
-    Properties:
-      AccessControl: PublicRead
-      BucketName: !Ref WebsiteDNSWithoutWWW
-      WebsiteConfiguration:
-        IndexDocument: index.html
-        ErrorDocument: 404.html
-      Tags:
-        - Key: Website
-          Value: !Ref WebsiteDNSWithoutWWW
-
-  S3BucketWithWWWBucketPolicy:
-    DependsOn:
-      - S3BucketWithWWW
-    Type: 'AWS::S3::BucketPolicy'
-    Properties:
-      PolicyDocument:
-        Id: WebsiteDNSPolicy
-        Version: 2012-10-17
-        Statement:
-          - Sid: PublicReadForGetBucketObjects
-            Effect: Allow
-            Principal: '*'
-            Action: 's3:GetObject'
-            Resource: !Join
-              - ''
-              - - 'arn:aws:s3:::'
-                - !Ref S3BucketWithWWW
-                - /*
-      Bucket: !Ref S3BucketWithWWW
-
-  S3BucketWithoutWWWBucketPolicy:
-    DependsOn:
-      - S3BucketWithoutWWW
-    Type: 'AWS::S3::BucketPolicy'
-    Properties:
-      PolicyDocument:
-        Id: WebsiteDNSPolicy
-        Version: 2012-10-17
-        Statement:
-          - Sid: PublicReadForGetBucketObjects
-            Effect: Allow
-            Principal: '*'
-            Action: 's3:GetObject'
-            Resource: !Join
-              - ''
-              - - 'arn:aws:s3:::'
-                - !Ref WebsiteDNSWithoutWWW
-                - /*
-      Bucket: !Ref WebsiteDNSWithoutWWW
-
   WebsiteSSLCertificateWWW:
     Type: AWS::CertificateManager::Certificate
     Properties:
@@ -107,35 +73,27 @@ Resources:
         - !Sub "*.${WebsiteDNSWithoutWWW}"
       ValidationMethod: DNS
 
-  CloudFrontOriginAccessIdentityWWW:
-    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
-    Properties:
-      CloudFrontOriginAccessIdentityConfig:
-        Comment: CloudfrontIdentityWWW
-
-  CloudFrontOriginAccessIdentityWithoutWWW:
-    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
-    Properties:
-      CloudFrontOriginAccessIdentityConfig:
-        Comment: CloudfrontIdentityWithoutWWW
-
   WebsiteCloudfrontWWW:
     Type: AWS::CloudFront::Distribution
     DependsOn:
-      - S3BucketWithWWW
-      - CloudFrontOriginAccessIdentityWWW
       - WebsiteSSLCertificateWWW
     Properties:
       DistributionConfig:
-        Comment: !Sub  Distribution for ${S3BucketWithWWW}
+        Comment: !Sub  Distribution for ${WebsiteDNSWWW}
         PriceClass: PriceClass_All
         Aliases:
           - !Sub ${WebsiteDNSWWW}
         Origins:
-          - DomainName: !Sub ${S3BucketWithWWW}.s3.${AWS::Region}.amazonaws.com
-            Id: !Sub ${S3BucketWithWWW}.s3.${AWS::Region}.amazonaws.com
-            S3OriginConfig:
-              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentityWWW}
+          - CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginKeepaliveTimeout: 5
+              OriginProtocolPolicy: 'http-only'
+              OriginReadTimeout: 30
+              OriginSSLProtocols:
+                - TLSv1.2
+            DomainName: !Sub '${WebsiteDNSWWW}.s3-website.${SecondaryRegion}.amazonaws.com'
+            Id: !Sub 'S3-${AWS::StackName}-root'
         Enabled: True
         CustomErrorResponses:
           - ErrorCode: 404
@@ -152,11 +110,9 @@ Resources:
             - HEAD
             - OPTIONS
           Compress: True
-          # ForwardedValues:
-            # QueryString: True
           DefaultTTL: 3600 # in seconds
           ViewerProtocolPolicy: redirect-to-https
-          TargetOriginId: !Sub ${S3BucketWithWWW}.s3.${AWS::Region}.amazonaws.com
+          TargetOriginId: !Sub 'S3-${AWS::StackName}-root'
         ViewerCertificate:
           AcmCertificateArn: !Ref WebsiteSSLCertificateWWW
           MinimumProtocolVersion: TLSv1.2_2021
@@ -168,20 +124,24 @@ Resources:
   WebsiteCloudfrontWithoutWWW:
     Type: AWS::CloudFront::Distribution
     DependsOn:
-      - S3BucketWithoutWWW
-      - CloudFrontOriginAccessIdentityWithoutWWW
       - WebsiteSSLCertificateWithoutWWW
     Properties:
       DistributionConfig:
-        Comment: !Sub  Distribution for ${S3BucketWithoutWWW}
+        Comment: !Sub  Distribution for ${WebsiteDNSWithoutWWW}
         PriceClass: PriceClass_All
         Aliases:
           - !Sub ${WebsiteDNSWithoutWWW}
         Origins:
-          - DomainName: !Sub ${S3BucketWithoutWWW}.s3.${AWS::Region}.amazonaws.com
-            Id: !Sub ${S3BucketWithoutWWW}.s3.${AWS::Region}.amazonaws.com
-            S3OriginConfig:
-              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentityWithoutWWW}
+          - CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginKeepaliveTimeout: 5
+              OriginProtocolPolicy: 'http-only'
+              OriginReadTimeout: 30
+              OriginSSLProtocols:
+                - TLSv1.2
+            DomainName: !Sub '${WebsiteDNSWithoutWWW}.s3-website.${SecondaryRegion}.amazonaws.com'
+            Id: !Sub 'S3-${AWS::StackName}-root'
         Enabled: True
         CustomErrorResponses:
           - ErrorCode: 404
@@ -198,11 +158,9 @@ Resources:
             - HEAD
             - OPTIONS
           Compress: True
-          # ForwardedValues:
-            # QueryString: True
           DefaultTTL: 3600 # in seconds
           ViewerProtocolPolicy: redirect-to-https
-          TargetOriginId: !Sub ${S3BucketWithoutWWW}.s3.${AWS::Region}.amazonaws.com
+          TargetOriginId: !Sub 'S3-${AWS::StackName}-root'
         ViewerCertificate:
           AcmCertificateArn: !Ref WebsiteSSLCertificateWithoutWWW
           MinimumProtocolVersion: TLSv1.2_2021
@@ -236,14 +194,19 @@ Resources:
         HostedZoneId: Z2FDTNDATAQYW2
 
 Outputs:
-  S3BucketWithWWW:
-    Value: !Sub ${S3BucketWithWWW}
-  WebsiteUrlWWW:
-    Value: !GetAtt
-          - S3BucketWithWWW
-          - WebsiteURL
-  SSLCertificate:
+  WebsiteSSLCertificateWWW:
     Value: !Ref WebsiteSSLCertificateWWW
-  S3Bucket:
-    Description: Bucket Created using this template.
-    Value: !Ref S3BucketWithWWW
+  WebsiteSSLCertificateWithoutWWW:
+    Value: !Ref WebsiteSSLCertificateWithoutWWW
+  CloudfrontWWW:
+    Value: !GetAtt
+          - WebsiteCloudfrontWWW
+          - DomainName
+  CloudfrontWithoutWWW:
+    Value: !GetAtt
+          - WebsiteCloudfrontWithoutWWW
+          - DomainName
+  Route53WWWRecordSet:
+    Value: !Ref Route53WWWRecordSet
+  Route53WithoutWWWRecordSet:
+    Value: !Ref Route53WithoutWWWRecordSet

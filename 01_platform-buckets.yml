@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Provisioning a platform stack
+
+Parameters:
+  WebsiteDNSWWW:
+    Type: String
+    Description: Enter your domain name (with www)
+    AllowedPattern: ".+"
+    ConstraintDescription: This field cannot be empty
+
+  WebsiteDNSWithoutWWW:
+    Type: String
+    Description: Enter your domain name (without www)
+    AllowedPattern: ".+"
+    ConstraintDescription: This field cannot be empty
+
+Resources:
+  S3BucketWithWWW:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      BucketName: !Ref WebsiteDNSWWW
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: 404.html
+      Tags:
+        - Key: Website
+          Value: !Ref WebsiteDNSWWW
+
+  S3BucketWithoutWWW:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      BucketName: !Ref WebsiteDNSWithoutWWW
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: 404.html
+      Tags:
+        - Key: Website
+          Value: !Ref WebsiteDNSWithoutWWW
+
+  S3BucketWithWWWBucketPolicy:
+    DependsOn:
+      - S3BucketWithWWW
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      PolicyDocument:
+        Id: WebsiteDNSPolicy
+        Version: 2012-10-17
+        Statement:
+          - Sid: PublicReadForGetBucketObjects
+            Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Join
+              - ""
+              - - "arn:aws:s3:::"
+                - !Ref S3BucketWithWWW
+                - /*
+      Bucket: !Ref S3BucketWithWWW
+
+  S3BucketWithoutWWWBucketPolicy:
+    DependsOn:
+      - S3BucketWithoutWWW
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      PolicyDocument:
+        Id: WebsiteDNSPolicy
+        Version: 2012-10-17
+        Statement:
+          - Sid: PublicReadForGetBucketObjects
+            Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Join
+              - ""
+              - - "arn:aws:s3:::"
+                - !Ref WebsiteDNSWithoutWWW
+                - /*
+      Bucket: !Ref WebsiteDNSWithoutWWW
+
+
+Outputs:
+  S3BucketWithWWW:
+    Value: !Sub ${S3BucketWithWWW}
+  S3BucketWithoutWWW:
+    Value: !Sub ${S3BucketWithoutWWW}
+  WebsiteUrlWithWWW:
+    Value: !GetAtt
+          - S3BucketWithWWW
+          - WebsiteURL
+  WebsiteUrlWithoutWWW:
+    Value: !GetAtt
+          - S3BucketWithoutWWW
+          - WebsiteURL
